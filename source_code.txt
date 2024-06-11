@@ -1,0 +1,713 @@
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+#define PADDLE_WIDTH 40
+#define PADDLE_HEIGHT 5
+#define PADDLE_SPEED 3
+
+#define BALL_SIZE 2 
+int BALL_SPEED_X = 2;
+int BALL_SPEED_Y = 2;
+int BALL_SPEED_T = 1;
+
+int delaySpeed = 50;
+
+int BRICK_ROWS = 3;  
+int BRICK_COLUMNS = 6; 
+int BRICK_WIDTH = 20; 
+int BRICK_HEIGHT = 5; 
+int BRICK_GAP = 2;     
+
+#define SCREEN_PADDING 2 
+
+#define BALL_DROP_CHANCE 10 
+
+#define BUTTON_PIN_1 12
+#define BUTTON_PIN_2 13
+#define BUTTON_PIN_3 A1
+
+#define LED_PIN_1 9
+#define LED_PIN_2 10
+#define LED_PIN_3 11
+
+const int ldrPin = A2;
+const int threshold = 500;
+
+const int switchPin = A3;
+
+bool isOptionSelected = false;
+int selectedOption = 0;
+
+bool gameStart = false;
+bool gameOver = false;
+bool nextLevel = false;
+int level = 1;
+ 
+int digit[10] = {0b0111111, 0b0000110, 0b1011011, 0b1001111, 0b1100110, 0b1101101, 0b1111101, 0b0000111, 0b1111111, 0b1101111};
+
+int can_sayisi = 3;
+int brickFallX, brickFallY;
+bool brickFallActive = false;
+int kirilantugla=0;
+int ktugla = 0;
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+int paddlePos;
+int ballX, ballY; 
+int ballDX = BALL_SPEED_X, ballDY = BALL_SPEED_Y;
+
+bool bricks[10][10];
+
+void setup() {
+  pinMode(BUTTON_PIN_1, INPUT_PULLUP);
+  pinMode(BUTTON_PIN_2, INPUT_PULLUP);
+  pinMode(BUTTON_PIN_3, INPUT_PULLUP);
+
+  pinMode(LED_PIN_1, OUTPUT);
+  pinMode(LED_PIN_2, OUTPUT);
+  pinMode(LED_PIN_3, OUTPUT);
+
+  pinMode(switchPin, INPUT);
+
+  pinMode(ldrPin, INPUT); 
+
+     for (int i = 2; i < 9; i++)
+  {
+    pinMode(i, OUTPUT);
+  }
+
+
+
+    Serial.begin(9600);
+
+    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+        Serial.println(F("SSD1306 ekranı başlatılamadı!"));
+        for (;;);
+    }
+
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(28,14);
+    display.println(F("Baslat"));
+    display.setCursor(34,34);
+    display.println(F("Cikis"));
+    display.display();
+}
+
+void loop() {
+ 
+  
+  while (!gameOver) {
+
+    int ldrValue = analogRead(ldrPin);
+
+
+    if (digitalRead(BUTTON_PIN_1) == LOW) {
+    selectedOption = 0;
+    isOptionSelected = true;
+    }
+
+    if (digitalRead(BUTTON_PIN_2) == LOW) {
+      selectedOption = 1;
+      isOptionSelected = true;
+    }
+
+    if (isOptionSelected) {
+       if (ldrValue > threshold) {
+
+      tuglasiyahyap();
+
+      } else {
+
+      tuglabeyazyap();
+
+      }
+
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setTextColor(SSD1306_WHITE);
+      display.setCursor(28, 14);
+      if (selectedOption == 0) {
+        display.drawRect(26, 12, 74, 18, SSD1306_WHITE);
+        display.setCursor(28,14);
+        display.println(F("Baslat"));
+      } else {
+        display.setCursor(28,14);
+        display.println(F("Baslat"));
+      }
+      if (selectedOption == 1) {
+        display.drawRect(32, 32, 62, 18, SSD1306_WHITE);
+        display.setCursor(34,34);
+        display.println(F("Cikis"));
+      } else {
+        display.setCursor(34,34);
+        display.println(F("Cikis"));
+      }
+      display.display();
+    }
+
+  if ((digitalRead(BUTTON_PIN_3) == LOW && isOptionSelected) || nextLevel == true) {
+    nextLevel = false;
+    isOptionSelected = false;
+    if (selectedOption == 0) {
+      if(level == 1) {
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setTextColor(SSD1306_WHITE);
+      display.setCursor(24,14);
+      display.println(F("BOLUM 1"));
+      display.display();
+      delay(2000);
+      }
+
+      display.clearDisplay();
+      display.display();
+
+      ballX = paddlePos + PADDLE_WIDTH/2;
+      ballY = 55;
+
+      createLevel();
+      drawScreen();
+      gameStart = true;
+    } else if (selectedOption == 1) {
+
+      gameStart = false;
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setTextColor(SSD1306_WHITE);
+      display.setCursor(0,0);
+      display.println(F("Oyunumuza gosterdiginiz ilgi icin tesekkurler"));
+      display.display();
+    }
+  }
+int c=0;
+  while (gameStart && !gameOver && !nextLevel) {
+
+      updatePaddle();
+
+     
+      if(c==0){
+      resetGame();
+      c=1;
+      }
+      updateBall();
+     
+      displayHealthLed();
+
+      if (brickFallActive) {
+          updateBrickFall();
+      }
+
+      drawScreen();
+      switch(level) {
+        case 1:
+        if (ktugla == 6) {
+          display.clearDisplay();
+          display.setTextSize(2);
+          display.setTextColor(SSD1306_WHITE);
+          display.setCursor(24,14);
+          display.println(F("BOLUM 2"));
+          display.display();
+          delay(2000);
+          nextLevel = true;
+          level++;
+        }
+        break;
+
+        case 2:
+        if (ktugla == 14) {
+          display.clearDisplay();
+          display.setTextSize(2);
+          display.setTextColor(SSD1306_WHITE);
+          display.setCursor(24,14);
+          display.println(F("BOLUM 3"));
+          display.display();
+          delay(2000);
+          nextLevel = true;
+          level++;
+        }
+        break;
+
+        case 3:
+        if (ktugla == 28) {
+          display.clearDisplay();
+          display.setTextSize(2);
+          display.setTextColor(SSD1306_WHITE);
+          display.setCursor(24,14);
+          display.println(F("BOLUM 4"));
+          display.display();
+          delay(2000);
+          nextLevel = true;
+          level++;
+        }
+        break;
+
+        case 4:
+        if (ktugla == 43) {
+          display.clearDisplay();
+          display.setTextSize(2);
+          display.setTextColor(SSD1306_WHITE);
+          display.setCursor(24,14);
+          display.println(F("BOLUM 5"));
+          display.display();
+          delay(2000);
+          nextLevel = true;
+          level++;
+        }
+        break;
+
+        case 5:
+        if (ktugla == 103) {
+          display.clearDisplay();
+          display.setTextSize(2);
+          display.setTextColor(SSD1306_WHITE);
+          display.setCursor(14,14);
+          display.println(F("TEBRIKLER!"));
+          display.display();
+          delay(2000);
+          gameOver = true;
+        }
+        break;      
+      }       
+      if(can_sayisi == 0) {
+          display.clearDisplay();
+          display.setTextSize(2);
+          display.setTextColor(SSD1306_WHITE);
+          display.setCursor(0,14);
+          display.println(F("KAYBETTINIZ!"));
+          display.display();
+          delay(2000);
+          gameOver = true;
+          level = 1;
+          nextLevel = false;
+      }
+    }
+  }
+  if (gameOver == true) {
+    skorEkrani();
+    delay(5000);
+    gameOver = false;
+    gameStart = false;
+    nextLevel = false;
+    isOptionSelected = true;
+    level = 1;
+    can_sayisi = 3;
+    kirilantugla = 0;
+    ktugla = 0;
+    delaySpeed = 50;
+  }
+}
+void createLevel() {
+
+  switch (level) {
+
+    case 1 :
+    BRICK_ROWS = 1;  
+    BRICK_COLUMNS = 6; 
+    BRICK_WIDTH = 20; 
+    BRICK_HEIGHT = 10; 
+    BRICK_GAP = 2; 
+    for (int i = 0; i < BRICK_ROWS; i++) {
+      for (int j = 0; j < BRICK_COLUMNS; j++) {
+        bricks[i][j] = true;
+      }
+    }
+    break;
+
+    case 2 :
+    delaySpeed = delaySpeed * 5 / 6;
+    BRICK_ROWS = 2; 
+    BRICK_COLUMNS = 5;
+    BRICK_WIDTH = 20;  
+    BRICK_HEIGHT = 10; 
+    BRICK_GAP = 2;
+    for (int i = 0; i < BRICK_ROWS; i++) {
+      for (int j = 1; j < BRICK_COLUMNS; j++) {
+        bricks[i][j] = true;
+      }
+    }
+    break;
+    
+    case 3 :
+    delaySpeed = delaySpeed *  5 / 6;
+    BRICK_ROWS = 2;   
+    BRICK_COLUMNS = 9; 
+    BRICK_WIDTH = 10;  
+    BRICK_HEIGHT = 5;  
+    BRICK_GAP = 1; 
+    for (int i = 0; i < BRICK_ROWS; i++) {
+      for (int j = 2; j < BRICK_COLUMNS; j++) {
+        bricks[i][j] = true;
+        }
+      }
+    break;
+
+    case 4 :
+    delaySpeed = delaySpeed * 5 / 6;
+    BRICK_ROWS = 5;   
+    BRICK_COLUMNS = 12; 
+    BRICK_WIDTH = 10; 
+    BRICK_HEIGHT = 5;  
+    BRICK_GAP = 2; 
+    for (int i = 1; i <= BRICK_ROWS; i++) {
+        for (int j = 1; j <= 2 * BRICK_ROWS - 1; j++) {
+            if (i == 1 || j == BRICK_ROWS - i + 1 || j == BRICK_ROWS + i - 1) {
+                bricks[i][j] = true;
+            }
+        }
+    }
+    break;
+
+    case 5 :
+    delaySpeed = delaySpeed * 5 / 6;
+    BRICK_ROWS = 5;   
+    BRICK_COLUMNS = 12; 
+    BRICK_WIDTH = 10;  
+    BRICK_HEIGHT = 5;  
+    BRICK_GAP = 1; 
+    for (int i = 0; i < BRICK_ROWS; i++) {
+      for (int j = 0; j < BRICK_COLUMNS; j++) {
+        bricks[i][j] = true;
+      }
+    }
+    break;
+  }
+
+
+}
+void dis(int num) {
+  for (int i = 2; i < 9; i++)
+  {
+    digitalWrite(i, bitRead(digit[num], i - 2));
+  }
+}
+
+void temizle() {
+  for (int i = 2; i < 9; i++) {
+    digitalWrite(i, LOW); 
+  }
+}
+
+void updatePaddle() {
+    int potValue = analogRead(A0);
+    paddlePos = map(potValue, 0, 1023, 0, SCREEN_WIDTH - PADDLE_WIDTH);
+    if (paddlePos < 0) {
+        paddlePos = 0;
+    } else if (paddlePos > SCREEN_WIDTH - PADDLE_WIDTH) {
+        paddlePos = SCREEN_WIDTH - PADDLE_WIDTH;
+    }
+}
+void displayHealthLed() {
+
+  if(can_sayisi == 0) {
+    digitalWrite(LED_PIN_1, LOW);
+    digitalWrite(LED_PIN_2, LOW);
+    digitalWrite(LED_PIN_3, LOW);
+  }
+
+  else if(can_sayisi == 1) {
+    digitalWrite(LED_PIN_1, HIGH);
+    digitalWrite(LED_PIN_2, LOW);
+    digitalWrite(LED_PIN_3, LOW);
+  }
+
+  else if(can_sayisi == 2) {
+    digitalWrite(LED_PIN_1, HIGH);
+    digitalWrite(LED_PIN_2, HIGH);
+    digitalWrite(LED_PIN_3, LOW);
+  }
+  
+  else {
+    digitalWrite(LED_PIN_1, HIGH);
+    digitalWrite(LED_PIN_2, HIGH);
+    digitalWrite(LED_PIN_3, HIGH);
+  }
+
+}
+void updateBall() {
+
+  delay(delaySpeed);
+  int switchState = digitalRead(switchPin);
+
+  if (switchState == HIGH) {
+    dis(kirilantugla);
+
+    ballX += ballDX;
+    ballY += ballDY;
+
+
+    if (ballY <= 0) {
+        ballDY = -ballDY;
+    } else if (ballY >= SCREEN_HEIGHT - BALL_SIZE) {
+      
+        can_sayisi=can_sayisi-1;
+        delay(800);
+        resetGame();
+    }
+
+
+    if (ballX <= 0 || ballX >= SCREEN_WIDTH - BALL_SIZE) {
+        ballDX = -ballDX;
+    }
+
+
+    if (ballY + BALL_SIZE >= SCREEN_HEIGHT - PADDLE_HEIGHT && ballX + BALL_SIZE >= paddlePos && ballX <= paddlePos + PADDLE_WIDTH) {
+        ballDY = -ballDY;
+    }
+
+
+    int brickX, brickY;
+    for (int i = 0; i < BRICK_ROWS; i++) {
+        brickY = i * (BRICK_HEIGHT + BRICK_GAP);
+        for (int j = 0; j < BRICK_COLUMNS; j++) {
+            if (bricks[i][j]) {
+                brickX = j * (BRICK_WIDTH + BRICK_GAP);
+                if (ballX + BALL_SIZE >= brickX && ballX <= brickX + BRICK_WIDTH &&
+                    ballY + BALL_SIZE >= brickY && ballY <= brickY + BRICK_HEIGHT) {
+                      kirilantugla++;
+                      ktugla++;
+                      
+                      if(kirilantugla==9){
+                        kirilantugla=0;
+                      }
+                      
+                    bricks[i][j] = false;
+                    ballDY = -ballDY;
+
+        
+                    if (random(100) < BALL_DROP_CHANCE) {
+                        brickFallX = brickX + BRICK_WIDTH / 2;
+                        brickFallY = brickY + BRICK_HEIGHT / 2;
+                        brickFallActive = true;
+                    }
+                }
+            }
+        }
+        }
+
+      
+  
+
+
+
+         int ldrValue = analogRead(ldrPin);
+
+  if (ldrValue > threshold) {
+ 
+    tuglasiyahyap();
+    
+  } else {
+    
+    tuglabeyazyap();
+    
+  }
+
+
+   
+    drawScreen();
+  }
+
+  else {
+
+    
+    ballX += ballDX;
+    ballY += ballDY;
+    dis(kirilantugla);
+    
+    if (ballY <= 0) {
+        ballDY = -ballDY;
+    } else if (ballY >= SCREEN_HEIGHT - BALL_SIZE) {
+      
+        can_sayisi=can_sayisi-1;
+        delay(400); 
+      
+          resetGame();
+    }
+
+   
+    if (ballX <= 0 || ballX >= SCREEN_WIDTH - BALL_SIZE) {
+        ballDX = -ballDX;
+    }
+
+
+    int ldrValue = analogRead(ldrPin);
+
+  if (ldrValue > threshold) {
+    
+    tuglasiyahyap();
+    
+  } else {
+
+    tuglabeyazyap();
+  
+  }
+
+    int paddleCenter = paddlePos + (PADDLE_WIDTH / 2);
+    int paddleLeftEdge = paddlePos;
+
+    int paddlePieceWidth = PADDLE_WIDTH / 5;
+    int paddlePieceLL = paddleLeftEdge;
+    int paddlePieceLR = paddleLeftEdge + paddlePieceWidth;
+    int paddlePieceM = paddleLeftEdge + 2 * paddlePieceWidth;
+    int paddlePieceRL = paddleLeftEdge + 3 * paddlePieceWidth;
+    int paddlePieceRR = paddleLeftEdge + 4 * paddlePieceWidth;
+
+
+    if (ballY + BALL_SIZE >= SCREEN_HEIGHT - PADDLE_HEIGHT && ballX + BALL_SIZE >= paddlePos && ballX <= paddlePos + PADDLE_WIDTH) {
+    
+        if (ballX < paddlePieceLR) {
+       
+        ballDX = BALL_SPEED_T*3;
+        ballDX = -abs(ballDX);
+        ballDY = BALL_SPEED_T*1;
+        ballDY = -ballDY;
+        } else if (ballX < paddlePieceM) {
+       
+        ballDX = BALL_SPEED_T*2;
+        ballDX = -abs(ballDX);
+        ballDY = BALL_SPEED_T*2;
+        ballDY = -ballDY;
+        } else if (ballX < paddlePieceRL) {
+        
+        ballDY = BALL_SPEED_T*2;
+        ballDY = -ballDY;
+        } else if (ballX < paddlePieceRR) {
+        
+        ballDX = BALL_SPEED_T*2;
+        ballDX = abs(ballDX);
+        ballDY = BALL_SPEED_T*2;
+        ballDY = -ballDY;
+        } else {
+        
+        ballDX = BALL_SPEED_T*3;
+        ballDX = abs(ballDX);
+        ballDY = BALL_SPEED_T*1;
+        ballDY = -ballDY;
+        }
+    }
+
+
+    int brickX, brickY;
+    for (int i = 0; i < BRICK_ROWS; i++) {
+        brickY = i * (BRICK_HEIGHT + BRICK_GAP);
+        for (int j = 0; j < BRICK_COLUMNS; j++) {
+            if (bricks[i][j]) {
+                brickX = j * (BRICK_WIDTH + BRICK_GAP);
+                if (ballX + BALL_SIZE >= brickX && ballX <= brickX + BRICK_WIDTH &&
+                    ballY + BALL_SIZE >= brickY && ballY <= brickY + BRICK_HEIGHT) {
+                      kirilantugla++;
+              
+                      ktugla++;
+                      
+                      if(kirilantugla==9){
+                        kirilantugla=0;
+                      }
+                      
+                    bricks[i][j] = false;
+                    ballDY = -ballDY;
+
+                    if (random(100) < BALL_DROP_CHANCE) {
+                        brickFallX = brickX + BRICK_WIDTH / 2;
+                        brickFallY = brickY + BRICK_HEIGHT / 2;
+                        brickFallActive = true;
+                    }
+                }
+            }
+        }
+    }
+
+
+
+  }
+}
+void skorEkrani() {
+    
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(28,14);
+    display.println(F("Oyun Bitti!"));
+    display.setTextSize(2);
+    display.setCursor(5,28);
+    display.print(F("SKOR PUANI    "));
+    display.println(ktugla);
+    display.display();
+}
+void resetGame() {
+    ballX = paddlePos + PADDLE_WIDTH/2;
+    ballY = 56;
+   
+}
+
+void drawFrame() {
+    
+    display.drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, WHITE);
+}
+void drawScreen() {
+    display.clearDisplay();
+    
+    drawFrame();
+   
+    display.fillRect(paddlePos, SCREEN_HEIGHT - PADDLE_HEIGHT, PADDLE_WIDTH, PADDLE_HEIGHT, WHITE);
+   
+    display.fillCircle(ballX, ballY, BALL_SIZE, WHITE);
+
+   
+    int brickX, brickY;
+    for (int i = 0; i < BRICK_ROWS; i++) {
+        brickY = SCREEN_PADDING + i * (BRICK_HEIGHT + BRICK_GAP);
+        for (int j = 0; j < BRICK_COLUMNS; j++) {
+            if (bricks[i][j]) {
+                brickX = SCREEN_PADDING + j * (BRICK_WIDTH + BRICK_GAP);
+                display.fillRect(brickX, brickY, BRICK_WIDTH, BRICK_HEIGHT, WHITE);
+            }
+        }
+    }
+
+    
+    if (brickFallActive) {
+        display.fillCircle(brickFallX, brickFallY, BALL_SIZE / 2, WHITE);
+    }
+
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor((SCREEN_WIDTH - 6 * 3) / 2, (SCREEN_HEIGHT / 2)+15); 
+    display.print(ktugla);
+
+
+
+
+    display.display();
+}
+
+void updateBrickFall() {
+  
+    brickFallY += 1;
+
+    
+    if (brickFallY + BALL_SIZE / 2 >= SCREEN_HEIGHT - PADDLE_HEIGHT && brickFallX + BALL_SIZE / 2 >= paddlePos && brickFallX <= paddlePos + PADDLE_WIDTH) {
+        if (can_sayisi < 3) {
+          can_sayisi++;
+        }
+        brickFallActive = false;
+    }
+
+    if (brickFallY - BALL_SIZE / 2 >= SCREEN_HEIGHT) {
+        brickFallActive = false;
+    }
+}
+void tuglasiyahyap() {
+    display.invertDisplay(true); 
+    
+}
+void tuglabeyazyap() {
+    display.invertDisplay(false);
+    
+}
